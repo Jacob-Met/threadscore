@@ -14,6 +14,8 @@ Use Node.js 22 or later and a modern browser with Web Audio and module-worker su
 npm start
 ```
 
+If Node is installed without npm, run `node server.mjs` instead.
+
 Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The server binds to loopback. Opening the application makes no model call and sends no imported music to a service. Save your work with **Save score**; there is no automatic persistence between page loads.
 
 The included original composition, **Three threads, six rooms**, is three minutes at 96 BPM. Ember, Glass, and Ground each retain a source motif across six sections. Its six relationships compile 576 notes, of which 573 are audible; interruptions retain the identities of muted notes. One Glass note is pinned to demonstrate preservation through a relationship change.
@@ -27,6 +29,8 @@ The included original composition, **Three threads, six rooms**, is three minute
 5. Save the editable score, then export MIDI or the audio you need. Reopen the saved score to continue editing.
 
 Changing a relationship control invalidates its old preview and stops that preview’s playback. A rejected change preserves the project. Undo restores earlier project content as a new revision.
+
+Sections can be empty, and a thread can have a source motif without a placed occurrence. Selecting that context shows an empty occurrence editor; the source motif remains editable. Use the arrangement or occurrence selector to return to a placed passage. Opening a saved score starts from its first placed occurrence.
 
 ## Relationship score
 
