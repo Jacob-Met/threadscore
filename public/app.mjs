@@ -24,23 +24,32 @@ const player=new ScorePlayer(state=>{
 });
 function currentThread(){return project.threads.find(t=>t.id===threadId)||project.threads[0];}
 function currentMotif(){return project.motifs.find(m=>m.id===currentThread().motifId);}
-function currentOccurrence(){return project.occurrences.find(o=>o.id===occurrenceId)||project.occurrences[0];}
+function currentOccurrence(){return project.occurrences.find(o=>o.id===occurrenceId)||null;}
 function currentSection(){return project.sections.find(s=>s.id===sectionId)||project.sections[0];}
 function currentRelation(){return project.relations.find(r=>r.id===relationId);}
 function fixSelection(){
  if(!project.threads.some(t=>t.id===threadId))threadId=project.threads[0].id;
  if(!project.sections.some(s=>s.id===sectionId))sectionId=project.sections[0].id;
- if(!project.occurrences.some(o=>o.id===occurrenceId))occurrenceId=project.occurrences.find(o=>o.threadId===threadId)?.id||project.occurrences[0].id;
+ const occurrence=currentOccurrence();
+ if(!occurrence||occurrence.threadId!==threadId||occurrence.sectionId!==sectionId)occurrenceId=project.occurrences.find(o=>o.threadId===threadId&&o.sectionId===sectionId)?.id||null;
  if(!project.relations.some(r=>r.id===relationId))relationId=project.relations[0]?.id||'';
- if(mode==='occurrence')threadId=currentOccurrence().threadId;
+ const notes=mode==='motif'?currentMotif().notes:score.notes.filter(n=>n.occurrenceId===occurrenceId);
+ if(!notes.some(n=>n.id===noteId))noteId=null;
+}
+function requireOccurrenceNote(){
+ const occurrence=currentOccurrence();
+ if(mode!=='occurrence'||!occurrence||occurrence.threadId!==threadId||occurrence.sectionId!==sectionId||!score.notes.some(n=>n.id===noteId&&n.occurrenceId===occurrence.id))throw Error('Choose a note in a placed occurrence before editing.');
+ return occurrence;
 }
 function remember(){history.push({project:clone(project),modelEvidence:clone(modelEvidence)});if(history.length>30)history.shift();}
-function adopt(result,message,{evidence=modelEvidence}={}){
- checked(result);remember();project=result.project;score=result.score;modelEvidence=evidence;changeSerial++;player.stop();proposal=null;selectedChanges.clear();fixSelection();render();status(message);
+function adopt(result,message,{evidence=modelEvidence,resetSelection=false}={}){
+ checked(result);remember();project=result.project;score=result.score;modelEvidence=evidence;
+ if(resetSelection){const first=project.occurrences[0];occurrenceId=first.id;threadId=first.threadId;sectionId=first.sectionId;mode='occurrence';noteId=null;}
+ changeSerial++;player.stop();proposal=null;selectedChanges.clear();fixSelection();render();status(message);
 }
 function commit(candidate,message){candidate.revision=project.revision+1;adopt({...checked(compileScore(candidate)),project:candidate},message);}
 function clearPreview(){if(proposal)player.stop();draftSerial++;proposal=null;selectedChanges.clear();renderProposal();renderTimeline();}
-function selectOccurrence(id){occurrenceId=id;const o=currentOccurrence();threadId=o.threadId;sectionId=o.sectionId;mode='occurrence';noteId=null;renderTimeline();renderEditor();}
+function selectOccurrence(id){const o=project.occurrences.find(o=>o.id===id);if(!o)return;occurrenceId=o.id;threadId=o.threadId;sectionId=o.sectionId;mode='occurrence';noteId=null;renderTimeline();renderEditor();}
 function selectRelation(id){
  relationId=id;const r=currentRelation();if(r){sectionId=project.occurrences.find(o=>o.id===r.sourceOccurrenceId).sectionId;occurrenceId=r.scopeOccurrenceIds[0];threadId=r.targetThreadId;mode='occurrence';noteId=null;}
  clearPreview();renderRelations();renderRelationEditor();renderTimeline();renderEditor();
@@ -58,7 +67,7 @@ function renderThreads(){
   card.append(el('p','thread-description',m.notes.length+' notes · '+m.lengthTicks/480+' beats · '+(m.importProvenance?'imported motif':'original motif')));
   const mini=el('div','motif-mini');mini.append(miniature(m.notes,m.lengthTicks,colors[i%colors.length]));card.append(mini);
   const actions=el('div','thread-actions');
-  actions.append(button('▶ Hear motif','quiet play-motif',()=>playMotif(t.id)),button('Edit motif','quiet edit-motif',()=>{threadId=t.id;mode='motif';noteId=null;renderEditor();$('editor-title').scrollIntoView({behavior:'smooth',block:'center'});}),button('Import MIDI','quiet import-motif',()=>{threadId=t.id;$('midi-file').value='';$('midi-file').click();}));
+  actions.append(button('▶ Hear motif','quiet play-motif',()=>playMotif(t.id)),button('Edit motif','quiet edit-motif',()=>{threadId=t.id;mode='motif';noteId=null;renderTimeline();renderEditor();$('editor-title').scrollIntoView({behavior:'smooth',block:'center'});}),button('Import MIDI','quiet import-motif',()=>{threadId=t.id;$('midi-file').value='';$('midi-file').click();}));
   card.append(actions);host.append(card);
  });
 }
@@ -71,8 +80,9 @@ function renderRelations(){
  if(!project.relations.length)host.append(el('p','help','This score has no relationships.'));
 }
 function renderTimeline(){
+ fixSelection();
  const sections=$('sections');sections.replaceChildren();
- for(const s of project.sections){const b=button(s.name||s.id,s.id===sectionId?'active':'',()=>{sectionId=s.id;occurrenceId=project.occurrences.find(o=>o.sectionId===s.id&&o.threadId===threadId)?.id||project.occurrences.find(o=>o.sectionId===s.id).id;noteId=null;mode='occurrence';renderTimeline();renderEditor();});b.dataset.sectionId=s.id;b.setAttribute('aria-pressed',String(s.id===sectionId));sections.append(b);}
+ for(const s of project.sections){const b=button(s.name||s.id,s.id===sectionId?'active':'',()=>{sectionId=s.id;const occurrence=project.occurrences.find(o=>o.sectionId===s.id&&o.threadId===threadId)||project.occurrences.find(o=>o.sectionId===s.id);occurrenceId=occurrence?.id||null;if(occurrence)threadId=occurrence.threadId;noteId=null;mode='occurrence';renderTimeline();renderEditor();});b.dataset.sectionId=s.id;b.setAttribute('aria-pressed',String(s.id===sectionId));sections.append(b);}
  const host=$('arrangement');host.replaceChildren();const affected=new Set(proposal?.affectedOccurrenceIds||[]);
  project.threads.forEach((t,i)=>{
   const row=el('div','track-row'),name=el('div','track-name',t.name),lane=el('div','track-lane');row.style.setProperty('--thread-color',colors[i%colors.length]);row.append(name,lane);
@@ -91,7 +101,7 @@ function renderParameters(kind,params={}){
 }
 function renderRelationEditor(){
  const r=currentRelation();$('preview-relationship').disabled=!r;$('relation-kind').replaceChildren();$('relation-source').replaceChildren();$('relation-scope').replaceChildren();
- if(!r){$('relation-title').textContent='No connection selected';$('relation-params').replaceChildren();return;}
+ if(!r){$('relation-title').textContent='No connection selected';$('relation-description').textContent='';$('relation-params').replaceChildren();return;}
  $('relation-title').textContent=RELATION_DEFINITIONS[r.kind].label+' the thread.';
  for(const [kind,def]of Object.entries(RELATION_DEFINITIONS)){const o=el('option','',def.label);o.value=kind;$('relation-kind').append(o);}$('relation-kind').value=r.kind;
  const source=project.occurrences.find(o=>o.id===r.sourceOccurrenceId);
@@ -121,12 +131,14 @@ function render(){
 // APP_PART_ONE
 
 function renderEditor(){
+ fixSelection();
  const thread=currentThread(),motif=currentMotif(),occurrence=currentOccurrence(),isSource=mode==='motif';
- $('mode-label').textContent=isSource?'PERSISTENT SOURCE MOTIF':'OCCURRENCE EDITOR';$('editor-title').textContent=thread.name+' · '+(isSource?'the original motif':project.sections.find(s=>s.id===occurrence.sectionId).name||occurrence.sectionId);
- $('source-mode').textContent=isSource?'Return to occurrence':'Edit source motif';$('occurrence-select').replaceChildren();$('occurrence-select').disabled=isSource;
- for(const o of project.occurrences.filter(o=>o.threadId===thread.id)){const section=project.sections.find(s=>s.id===o.sectionId),option=el('option','',(section.name||section.id)+' · beat '+(o.startTick/480+1));option.value=o.id;$('occurrence-select').append(option);}$('occurrence-select').value=occurrence.id;
- const notes=isSource?motif.notes:score.notes.filter(n=>n.occurrenceId===occurrence.id),origin=isSource?0:occurrence.startTick,roll=$('piano-roll');roll.replaceChildren();
- const low=Math.max(0,Math.min(...notes.map(n=>n.pitch))-3),high=Math.min(127,Math.max(low+12,Math.max(...notes.map(n=>n.pitch))+3)),rows=high-low+1,rowHeight=240/rows,plotX=58,plotWidth=930;
+ $('mode-label').textContent=isSource?'PERSISTENT SOURCE MOTIF':'OCCURRENCE EDITOR';$('editor-title').textContent=thread.name+' · '+(isSource?'the original motif':currentSection().name||currentSection().id);
+ $('source-mode').textContent=isSource?'Return to occurrence':'Edit source motif';$('occurrence-select').replaceChildren();const placements=project.occurrences.filter(o=>o.threadId===thread.id);$('occurrence-select').disabled=isSource||!placements.length;
+ if(!occurrence){const option=el('option','','No occurrence in this section');option.value='';option.disabled=true;$('occurrence-select').append(option);}
+ for(const o of placements){const section=project.sections.find(s=>s.id===o.sectionId),option=el('option','',(section.name||section.id)+' · beat '+(o.startTick/480+1));option.value=o.id;$('occurrence-select').append(option);}$('occurrence-select').value=occurrence?.id||'';
+ const notes=isSource?motif.notes:occurrence?score.notes.filter(n=>n.occurrenceId===occurrence.id):[],origin=isSource?0:occurrence?.startTick||0,roll=$('piano-roll');roll.replaceChildren();
+ const rangeNotes=notes.length?notes:motif.notes,low=Math.max(0,Math.min(...rangeNotes.map(n=>n.pitch))-3),high=Math.min(127,Math.max(low+12,Math.max(...rangeNotes.map(n=>n.pitch))+3)),rows=high-low+1,rowHeight=240/rows,plotX=58,plotWidth=930;
  for(let pitch=low;pitch<=high;pitch++){const y=24+(high-pitch)*rowHeight;roll.append(svg('rect',{x:plotX,y,width:plotWidth,height:rowHeight,fill:[1,3,6,8,10].includes(pitch%12)?'#151d29':'#222e3d'}));if(pitch%12===0||pitch===low||pitch===high){const label=svg('text',{x:6,y:y+rowHeight*.7,class:'piano-label'});label.textContent=pitchName(pitch);roll.append(label);}}
  const beats=motif.lengthTicks/480,gridStep=Math.max(1,Math.ceil(beats/32));
  for(let beat=0;beat<=beats;beat+=gridStep){const x=plotX+beat/beats*plotWidth;roll.append(svg('line',{x1:x,x2:x,y1:24,y2:264,stroke:beat%4===0?'#566476':'#344252','stroke-width':beat%4===0?1.2:.5}));const label=svg('text',{x:x+3,y:14,class:'piano-bar-label'});label.textContent=String(beat+1);roll.append(label);}
@@ -135,9 +147,9 @@ function renderEditor(){
   const title=svg('title');title.textContent=n.id+(locked?' · pinned':'');rect.append(title);
   const choose=()=>{noteId=n.id;renderEditor();};rect.addEventListener('click',choose);rect.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();choose();}});roll.append(rect);
  }
- const chosen=notes.find(n=>n.id===noteId);$('note-fields').disabled=!chosen;$('add-note').hidden=!isSource;$('delete-note').hidden=!isSource;$('pin-note').hidden=isSource;$('clear-note').hidden=isSource;
- $('editor-help').textContent=isSource?'Source edits propagate through every occurrence and its relationships. Pinned notes keep their performed values.':'Choose a note. Editing this occurrence creates an explicit note edit; pinning preserves its performed values through future relationship changes.';
- if(!chosen){$('selected-note-label').textContent='Select a note';$('note-ancestry').textContent='Select a note to inspect its actual source and transformations.';return;}
+ const chosen=notes.find(n=>n.id===noteId);$('note-fields').disabled=!chosen;$('add-note').hidden=!isSource;$('delete-note').hidden=!isSource;$('pin-note').hidden=isSource||!occurrence;$('clear-note').hidden=isSource||!occurrence;$('apply-note').disabled=!chosen||(!isSource&&Boolean(project.locks?.[chosen.id]));$('delete-note').disabled=!chosen;$('clear-note').disabled=!chosen||!project.noteOverrides?.[chosen.id];
+ $('editor-help').textContent=!isSource&&!occurrence?'No passage is placed for this thread in this section. Select a passage or edit the source motif.':isSource?'Source edits propagate through every occurrence and its relationships. Pinned notes keep their performed values.':'Choose a note. Editing this occurrence creates an explicit note edit; pinning preserves its performed values through future relationship changes.';
+ if(!chosen){for(const id of ['note-pitch','note-start','note-duration','note-velocity'])$(id).value='';$('selected-note-label').textContent=!isSource&&!occurrence?'No occurrence in this section':'Select a note';$('note-ancestry').textContent=!isSource&&!occurrence?'This thread has no occurrence in the selected section. Its source motif is still available.':'Select a note to inspect its actual source and transformations.';return;}
  $('selected-note-label').textContent=pitchName(chosen.pitch)+' · '+chosen.id+(project.locks?.[chosen.id]?' · pinned':'');$('note-pitch').value=chosen.pitch;$('note-start').value=(chosen.startTick-origin)/480;$('note-duration').value=chosen.durationTicks/480;$('note-velocity').value=chosen.velocity;
  $('pin-note').textContent=project.locks?.[chosen.id]?'Unpin note':'Pin note';$('clear-note').disabled=!project.noteOverrides?.[chosen.id];$('apply-note').disabled=!isSource&&Boolean(project.locks?.[chosen.id]);
  $('note-ancestry').textContent=JSON.stringify(isSource?[{kind:'motif',motifId:motif.id,sourceNoteId:chosen.id},...(motif.importProvenance?[{kind:'midi-import',source:motif.importProvenance,sourceNoteId:chosen.importSourceNoteId}]:[])]:chosen.ancestry,null,2);
@@ -165,7 +177,7 @@ async function exportAudio(job){
 }
 async function openProject(file){
  if(!file)return;if(file.size>2*1024*1024)throw Error('A score file must be no larger than 2 MiB.');const serial=changeSerial,loaded=await decodeProject(JSON.parse(await file.text()));if(serial!==changeSerial)throw Error('The score changed while opening this file. Open it again when ready.');
- adopt({ok:true,project:loaded.project,score:loaded.score},'Opened and recompiled the editable score. Imported model receipts remain unverified.',{evidence:loaded.modelEvidence});
+ adopt({ok:true,project:loaded.project,score:loaded.score},'Opened and recompiled the editable score. Imported model receipts remain unverified.',{evidence:loaded.modelEvidence,resetSelection:true});
 }
 async function openMidi(file){
  if(!file)return;if(file.size>4*1024*1024)throw Error('MIDI imports must be no larger than 4 MiB.');
@@ -212,19 +224,21 @@ $('play-range').addEventListener('change',()=>{player.stop();});
 $('master-gain').addEventListener('change',()=>{player.stop();status('Master level changed. Play again or export at the new level.');});
 $('occurrence-select').addEventListener('change',()=>selectOccurrence($('occurrence-select').value));
 $('source-mode').addEventListener('click',()=>{
- if(mode==='motif'){mode='occurrence';occurrenceId=project.occurrences.find(o=>o.threadId===threadId&&o.sectionId===sectionId)?.id||project.occurrences.find(o=>o.threadId===threadId).id;}
+ if(mode==='motif'){mode='occurrence';occurrenceId=project.occurrences.find(o=>o.threadId===threadId&&o.sectionId===sectionId)?.id||null;}
  else mode='motif';noteId=null;renderEditor();renderTimeline();
 });
 $('apply-note').addEventListener('click',guard(()=>{
+ const occurrence=mode==='occurrence'?requireOccurrenceNote():null;
  for(const id of ['note-pitch','note-start','note-duration','note-velocity'])if(!$(id).value||!$(id).checkValidity())throw Error('Enter valid note values before applying.');
  const localStart=Number($('note-start').value)*480,duration=Number($('note-duration').value)*480;if(!Number.isSafeInteger(localStart)||!Number.isSafeInteger(duration))throw Error('Note timing must use exact score ticks.');
  const patch={pitch:Number($('note-pitch').value),startTick:localStart,durationTicks:duration,velocity:Number($('note-velocity').value)};
  if(mode==='motif'){const candidate=clone(project),motif=candidate.motifs.find(m=>m.id===currentMotif().id),note=motif.notes.find(n=>n.id===noteId);if(!note)throw Error('Select a source note.');Object.assign(note,patch);commit(candidate,'Source motif edited. Occurrences and relationships were recompiled; pinned performed notes remain fixed.');}
- else{patch.startTick+=currentOccurrence().startTick;adopt(setNoteOverride(project,noteId,patch),'Occurrence note edited. Its source motif stays available for the other passages.');}
+ else{patch.startTick+=occurrence.startTick;adopt(setNoteOverride(project,noteId,patch),'Occurrence note edited. Its source motif stays available for the other passages.');}
 }));
-$('pin-note').addEventListener('click',guard(()=>{if(mode!=='occurrence'||!noteId)throw Error('Select an occurrence note.');const locked=Boolean(project.locks?.[noteId]);adopt(setNoteLocks(project,[noteId],!locked),locked?'Note unpinned. It follows the relationship again.':'Note pinned at its current performed values.');}));
-$('clear-note').addEventListener('click',guard(()=>adopt(clearNoteOverrides(project,[noteId]),'Individual note edit released. The underlying relationship was recompiled.')));
+$('pin-note').addEventListener('click',guard(()=>{requireOccurrenceNote();const locked=Boolean(project.locks?.[noteId]);adopt(setNoteLocks(project,[noteId],!locked),locked?'Note unpinned. It follows the relationship again.':'Note pinned at its current performed values.');}));
+$('clear-note').addEventListener('click',guard(()=>{requireOccurrenceNote();adopt(clearNoteOverrides(project,[noteId]),'Individual note edit released. The underlying relationship was recompiled.');}));
 $('add-note').addEventListener('click',guard(()=>{
+ if(mode!=='motif')throw Error('Choose a source motif before adding a note.');
  const candidate=clone(project),motif=candidate.motifs.find(m=>m.id===currentMotif().id),used=new Set(motif.notes.map(n=>n.pitch));let pitch=60;while(used.has(pitch)&&pitch<127)pitch++;if(used.has(pitch))throw Error('Choose a free pitch by editing the motif first.');
  let startTick=0,durationTicks=0;for(const n of [...motif.notes].sort((a,b)=>a.startTick-b.startTick)){if(n.startTick>startTick){durationTicks=Math.min(240,n.startTick-startTick);break;}startTick=Math.max(startTick,n.startTick+n.durationTicks);}
  if(!durationTicks&&startTick<motif.lengthTicks)durationTicks=Math.min(240,motif.lengthTicks-startTick);
