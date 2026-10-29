@@ -4,6 +4,7 @@ import {parseMidi,encodeMidi} from '/src/midi.mjs';
 import {encodeProject,decodeProject} from '/src/project.mjs';
 import {importMidiMotif} from '/src/import.mjs';
 import {ScorePlayer,audioJob} from '/playback.mjs';
+import {createProposalChanges} from '/proposal-changes.mjs';
 
 const $=id=>document.getElementById(id),colors=['#e8b76c','#83cab7','#bca6df','#7fb6dc'],clone=x=>structuredClone(x);
 const el=(tag,className='',text='')=>{const node=document.createElement(tag);if(className)node.className=className;if(text)node.textContent=text;return node;};
@@ -16,6 +17,7 @@ function guard(fn){return async event=>{try{await fn(event);}catch(error){status
 function button(text,className,fn){const node=el('button',className,text);node.type='button';node.addEventListener('click',guard(fn));return node;}
 let project=createDemoProject(),score=checked(compileScore(project)).score,relationId='answer-exchange',sectionId='exchange',occurrenceId='exchange-glass-1',threadId='glass',noteId='exchange-glass-1::b1',mode='occurrence';
 let proposal=null,selectedChanges=new Set(),history=[],modelEvidence=null,changeSerial=0,importSource=null,pendingImportThreadId=null,exportBusy=false,modelBusy=false,capabilities=null;
+const proposalChanges=createProposalChanges({host:$('changes'),selectedChanges,onSelectionChange:updateSelectedChanges});
 const player=new ScorePlayer(state=>{
  $('playback-time').textContent=state.state==='rendering'?'Rendering…':clock(state.seconds||0);
  $('score-play').dataset.playState=state.state;$('play-before').dataset.playState=state.state;$('play-after').dataset.playState=state.state;
@@ -111,18 +113,13 @@ function renderRelationEditor(){
   const label=el('label','scope-row'),input=el('input');input.type='checkbox';input.checked=r.scopeOccurrenceIds.includes(o.id);input.dataset.occurrenceId=o.id;label.append(input,document.createTextNode('Beat '+(o.startTick/480+1)));$('relation-scope').append(label);
  }
 }
+function updateSelectedChanges(){
+ $('accept-selected').disabled=!selectedChanges.size;
+ $('accept-selected').textContent=selectedChanges.size?'Accept '+selectedChanges.size+' selected note edit'+(selectedChanges.size===1?'':'s'):'Accept selected note edits';
+}
 function renderProposal(){
- const panel=$('proposal-panel');panel.hidden=!proposal;if(!proposal)return;
+ $('proposal-panel').hidden=!proposal;proposalChanges.setProposal(proposal);updateSelectedChanges();if(!proposal)return;
  $('proposal-summary').textContent=proposal.diff.length+' notes change in '+proposal.affectedOccurrenceIds.length+' passages. The current score stays in place until you accept.';
- const host=$('changes');host.replaceChildren();
- for(const d of proposal.diff.slice(0,300)){
-  const label=el('label','change-row'),input=el('input');input.type='checkbox';input.dataset.noteId=d.noteId;input.checked=selectedChanges.has(d.noteId);
-  input.addEventListener('change',()=>{if(input.checked)selectedChanges.add(d.noteId);else selectedChanges.delete(d.noteId);$('accept-selected').disabled=!selectedChanges.size;$('accept-selected').textContent='Accept '+selectedChanges.size+' selected note edit'+(selectedChanges.size===1?'':'s');});
-  const text=el('span'),title=el('strong','',d.after.occurrenceId+' / '+d.after.sourceNoteId),description=el('small','',pitchName(d.before.pitch)+' → '+pitchName(d.after.pitch)+' · velocity '+d.before.velocity+' → '+d.after.velocity+(d.before.startTick!==d.after.startTick?' · timing moved':'')+(d.before.muted!==d.after.muted?' · '+(d.after.muted?'rest':'audible'):''));
-  text.append(title,description);label.append(input,text);host.append(label);
- }
- if(proposal.diff.length>300)host.append(el('p','help','The first 300 changed notes are shown. Full acceptance applies the complete program.'));
- $('accept-selected').disabled=!selectedChanges.size;$('accept-selected').textContent='Accept selected note edits';
 }
 function render(){
  fixSelection();$('project-title').value=project.title||'Untitled score';$('tempo').value=project.bpm;$('score-duration').textContent=clock(score.durationTicks/score.ppq*60/score.bpm);$('score-count').textContent=project.motifs.length+' motifs';$('undo').disabled=!history.length;

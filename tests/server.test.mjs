@@ -23,7 +23,7 @@ test('model requires explicit opt-in and maintained credential; disabled applica
 test('static whitelist serves the application and excludes secrets/server/provider source',async()=>{
  await withServer(null,async base=>{const page=await fetch(base+'/');assert.equal(page.status,200);assert.match(page.headers.get('content-type'),/text\/html/);assert.match(page.headers.get('cache-control'),/no-store/);
  for(const path of ['/server.mjs','/src/provider.mjs','/.env','/%2e%2e/server.mjs'])assert.equal((await fetch(base+path)).status,404);
- for(const path of ['/playback.mjs','/src/import.mjs'])assert.equal((await fetch(base+path)).status,200);});
+ for(const path of ['/playback.mjs','/proposal-changes.mjs','/src/import.mjs']){const module=await fetch(base+path);assert.equal(module.status,200);assert.match(module.headers.get('content-type'),/text\/javascript/);}});
 });
 test('valid mocked program compiles and retains bounded actual fixture response receipts',async()=>{
  const requests=[],provider=configured(async(url,options)=>{requests.push({url,options});return response(good());}),before=JSON.stringify(project);

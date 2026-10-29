@@ -10,7 +10,8 @@
     "start": "node server.mjs",
     "test": "node --test tests/*.test.mjs",
     "package": "node tools/package.mjs",
-    "test:browser": "node tools/browser-check.mjs"
+    "test:browser": "node tools/browser-check.mjs",
+    "test:proposal-review": "node tools/proposal-review-check.mjs"
   },
   "license": "MIT"
 }
