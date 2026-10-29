@@ -15,7 +15,7 @@ function checked(result){if(!result.ok)throw Error(result.errors.map(e=>e.messag
 function guard(fn){return async event=>{try{await fn(event);}catch(error){status(error.message,'error');}};}
 function button(text,className,fn){const node=el('button',className,text);node.type='button';node.addEventListener('click',guard(fn));return node;}
 let project=createDemoProject(),score=checked(compileScore(project)).score,relationId='answer-exchange',sectionId='exchange',occurrenceId='exchange-glass-1',threadId='glass',noteId='exchange-glass-1::b1',mode='occurrence';
-let proposal=null,selectedChanges=new Set(),history=[],modelEvidence=null,changeSerial=0,importSource=null,exportBusy=false,modelBusy=false,capabilities=null;
+let proposal=null,selectedChanges=new Set(),history=[],modelEvidence=null,changeSerial=0,importSource=null,pendingImportThreadId=null,exportBusy=false,modelBusy=false,capabilities=null;
 const player=new ScorePlayer(state=>{
  $('playback-time').textContent=state.state==='rendering'?'Rendering…':clock(state.seconds||0);
  $('score-play').dataset.playState=state.state;$('play-before').dataset.playState=state.state;$('play-after').dataset.playState=state.state;
@@ -67,7 +67,7 @@ function renderThreads(){
   card.append(el('p','thread-description',m.notes.length+' notes · '+m.lengthTicks/480+' beats · '+(m.importProvenance?'imported motif':'original motif')));
   const mini=el('div','motif-mini');mini.append(miniature(m.notes,m.lengthTicks,colors[i%colors.length]));card.append(mini);
   const actions=el('div','thread-actions');
-  actions.append(button('▶ Hear motif','quiet play-motif',()=>playMotif(t.id)),button('Edit motif','quiet edit-motif',()=>{threadId=t.id;mode='motif';noteId=null;renderTimeline();renderEditor();$('editor-title').scrollIntoView({behavior:'smooth',block:'center'});}),button('Import MIDI','quiet import-motif',()=>{threadId=t.id;$('midi-file').value='';$('midi-file').click();}));
+  actions.append(button('▶ Hear motif','quiet play-motif',()=>playMotif(t.id)),button('Edit motif','quiet edit-motif',()=>{threadId=t.id;mode='motif';noteId=null;renderTimeline();renderEditor();$('editor-title').scrollIntoView({behavior:'smooth',block:'center'});}),button('Import MIDI','quiet import-motif',()=>{pendingImportThreadId=t.id;$('midi-file').value='';$('midi-file').click();}));
   card.append(actions);host.append(card);
  });
 }
@@ -179,15 +179,17 @@ async function openProject(file){
  if(!file)return;if(file.size>2*1024*1024)throw Error('A score file must be no larger than 2 MiB.');const serial=changeSerial,loaded=await decodeProject(JSON.parse(await file.text()));if(serial!==changeSerial)throw Error('The score changed while opening this file. Open it again when ready.');
  adopt({ok:true,project:loaded.project,score:loaded.score},'Opened and recompiled the editable score. Imported model receipts remain unverified.',{evidence:loaded.modelEvidence,resetSelection:true});
 }
-async function openMidi(file){
+async function openMidi(file,targetThreadId){
  if(!file)return;if(file.size>4*1024*1024)throw Error('MIDI imports must be no larger than 4 MiB.');
  const baseSerial=changeSerial,bytes=new Uint8Array(await file.arrayBuffer()),parsed=parseMidi(bytes),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
  if(baseSerial!==changeSerial)throw Error('The score changed while opening MIDI. Select the file again.');
+ const targetThread=project.threads.find(t=>t.id===targetThreadId),targetMotif=targetThread&&project.motifs.find(m=>m.id===targetThread.motifId);
+ if(!targetMotif)throw Error('The target motif is no longer available. Choose a thread and select the MIDI file again.');
  const tracks=parsed.tracks.filter(t=>t.notes.length);if(!tracks.length)throw Error('This MIDI file contains no playable note track.');
  importSource={parsed,fileName:file.name,sha256:hash,baseSerial};$('import-track').replaceChildren();$('import-thread').replaceChildren();
  for(const t of tracks){const option=el('option','',(t.name||t.id)+' · '+t.notes.length+' notes');option.value=t.id;$('import-track').append(option);}
- for(const t of project.threads){const option=el('option','',t.name);option.value=t.id;$('import-thread').append(option);}$('import-thread').value=threadId;
- $('import-start').value=0;$('import-end').value=Math.min(currentMotif().lengthTicks/480,Math.max(1,parsed.durationTicks/parsed.ppq));$('import-error').textContent='';
+ for(const t of project.threads){const option=el('option','',t.name);option.value=t.id;$('import-thread').append(option);}$('import-thread').value=targetThread.id;
+ $('import-start').value=0;$('import-end').value=Math.min(targetMotif.lengthTicks/480,Math.max(1,parsed.durationTicks/parsed.ppq));$('import-error').textContent='';
  $('import-summary').textContent=file.name+' · PPQ '+parsed.ppq+' · '+tracks.length+' note tracks.'+(parsed.warnings.length?' '+parsed.warnings.slice(0,3).join(' '):'');
  $('import-dialog').showModal();
 }
@@ -256,7 +258,8 @@ $('undo').addEventListener('click',guard(()=>{
 $('demo-reset').addEventListener('click',guard(()=>{const candidate=createDemoProject();candidate.revision=project.revision+1;threadId='glass';sectionId='exchange';occurrenceId='exchange-glass-1';relationId='answer-exchange';mode='occurrence';noteId='exchange-glass-1::b1';adopt({...checked(compileScore(candidate)),project:candidate},'Original three-minute composition restored. Undo can recover your previous score.',{evidence:null});}));
 $('project-save').addEventListener('click',guard(saveProject));$('project-open').addEventListener('click',()=>{$('project-file').value='';$('project-file').click();});
 $('project-file').addEventListener('change',guard(event=>openProject(event.target.files[0])));
-$('midi-file').addEventListener('change',guard(event=>openMidi(event.target.files[0])));
+$('midi-file').addEventListener('change',guard(event=>{const targetThreadId=pendingImportThreadId??threadId;pendingImportThreadId=null;return openMidi(event.target.files[0],targetThreadId);}));
+$('midi-file').addEventListener('cancel',()=>{pendingImportThreadId=null;});
 $('import-confirm').addEventListener('click',confirmImport);$('import-cancel').addEventListener('click',()=>{$('import-dialog').close();importSource=null;});
 $('import-dialog').addEventListener('cancel',()=>{importSource=null;});
 $('export-midi').addEventListener('click',guard(exportMidi));$('export-wav').addEventListener('click',guard(()=>exportAudio('wav')));$('export-stems').addEventListener('click',guard(()=>exportAudio('stems')));
