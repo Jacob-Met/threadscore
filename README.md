@@ -92,6 +92,7 @@ Audio rendering is limited to ten minutes per operation, with preflight limits o
 npm test
 THREADSCORE_CHROME=/path/to/google-chrome npm run test:browser
 THREADSCORE_CHROME=/path/to/google-chrome npm run test:proposal-review
+THREADSCORE_CHROME=/path/to/google-chrome npm run test:save-roundtrip
 npm run package
 ```
 
