@@ -16,3 +16,9 @@
 .proposal-review-navigation button:hover:enabled{background:#354658}
 .proposal-review-navigation select{flex:1 1 100%;width:auto;max-width:100%;margin:0}
 @media(min-width:761px) and (max-width:1240px){.proposal-review-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.proposal-review-navigation select{flex:0 1 150px}.proposal-review-navigation button{flex:0 1 auto}}
+
+/* Keep score recovery controls together when the header wraps. */
+.file-actions{flex-wrap:wrap;align-items:center}
+.history-actions{display:flex;flex:0 0 auto;align-items:center;gap:12px;border-left:1px solid var(--line);padding-left:12px}
+.history-actions button{white-space:nowrap}
+@media(max-width:760px){.topbar{padding-top:10px;padding-bottom:10px}.file-actions{gap:7px}.history-actions{gap:7px;padding-left:9px}}

@@ -28,7 +28,11 @@ The included original composition, **Three threads, six rooms**, is three minute
 4. Click an occurrence in the arrangement and select a piano-roll note. Edit its pitch, timing, or velocity, or pin its performed values. Switch to **Edit source motif** when the change should affect every occurrence sharing that source.
 5. Save the editable score, then export MIDI or the audio you need. Reopen the saved score to continue editing.
 
-Changing a relationship control invalidates its old preview and stops that preview’s playback. A rejected change preserves the project. Undo restores earlier project content as a new revision.
+Changing a relationship control invalidates its old preview and stops that preview’s playback. A rejected change preserves the project. **Undo** and **Redo** in the header recover up to 30 committed changes during the current session. Each restoration becomes a new revision, stops playback, and clears any pending preview. A successful new edit after Undo clears the forward history; failed edits, navigation, saving, and exports do not. History is not included in saved scores and does not survive reloading the page.
+
+Outside form fields, editable text, and dialogs, use **Ctrl/Cmd+Z** to undo and **Ctrl/Cmd+Shift+Z** to redo; **Ctrl+Y** also redoes. Text and form controls retain their native editing shortcuts. Use the header buttons when you want score history while editing a field.
+
+Actual views after undoing a source edit, with Redo ready to restore it: [desktop history controls](docs/screenshots/history-desktop.png) and [narrow history controls](docs/screenshots/history-mobile.png).
 
 Sections can be empty, and a thread can have a source motif without a placed occurrence. Selecting that context shows an empty occurrence editor; the source motif remains editable. Use the arrangement or occurrence selector to return to a placed passage. Opening a saved score starts from its first placed occurrence.
 
@@ -93,6 +97,7 @@ npm test
 THREADSCORE_CHROME=/path/to/google-chrome npm run test:browser
 THREADSCORE_CHROME=/path/to/google-chrome npm run test:proposal-review
 THREADSCORE_CHROME=/path/to/google-chrome npm run test:save-roundtrip
+THREADSCORE_CHROME=/path/to/google-chrome npm run test:history
 npm run package
 ```
 

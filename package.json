@@ -12,7 +12,8 @@
     "package": "node tools/package.mjs",
     "test:browser": "node tools/browser-check.mjs",
     "test:proposal-review": "node tools/proposal-review-check.mjs",
-    "test:save-roundtrip": "node tools/save-roundtrip-check.mjs"
+    "test:save-roundtrip": "node tools/save-roundtrip-check.mjs",
+    "test:history": "node tools/history-check.mjs"
   },
   "license": "MIT"
 }

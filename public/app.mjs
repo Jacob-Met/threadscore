@@ -16,7 +16,7 @@ function checked(result){if(!result.ok)throw Error(result.errors.map(e=>e.messag
 function guard(fn){return async event=>{try{await fn(event);}catch(error){status(error.message,'error');}};}
 function button(text,className,fn){const node=el('button',className,text);node.type='button';node.addEventListener('click',guard(fn));return node;}
 let project=createDemoProject(),score=checked(compileScore(project)).score,relationId='answer-exchange',sectionId='exchange',occurrenceId='exchange-glass-1',threadId='glass',noteId='exchange-glass-1::b1',mode='occurrence';
-let proposal=null,selectedChanges=new Set(),history=[],modelEvidence=null,changeSerial=0,importSource=null,pendingImportThreadId=null,exportBusy=false,modelBusy=false,capabilities=null;
+let proposal=null,selectedChanges=new Set(),history=[],redoHistory=[],modelEvidence=null,changeSerial=0,importSource=null,pendingImportThreadId=null,exportBusy=false,modelBusy=false,capabilities=null;
 const proposalChanges=createProposalChanges({host:$('changes'),selectedChanges,onSelectionChange:updateSelectedChanges});
 const player=new ScorePlayer(state=>{
  $('playback-time').textContent=state.state==='rendering'?'Rendering…':clock(state.seconds||0);
@@ -43,13 +43,34 @@ function requireOccurrenceNote(){
  if(mode!=='occurrence'||!occurrence||occurrence.threadId!==threadId||occurrence.sectionId!==sectionId||!score.notes.some(n=>n.id===noteId&&n.occurrenceId===occurrence.id))throw Error('Choose a note in a placed occurrence before editing.');
  return occurrence;
 }
-function remember(){history.push({project:clone(project),modelEvidence:clone(modelEvidence)});if(history.length>30)history.shift();}
-function adopt(result,message,{evidence=modelEvidence,resetSelection=false}={}){
- checked(result);remember();project=result.project;score=result.score;modelEvidence=evidence;
+function historySnapshot(action){return {project:clone(project),modelEvidence:clone(modelEvidence),action};}
+function remember(action){const snapshot=historySnapshot(action);history.push(snapshot);redoHistory.length=0;if(history.length>30)history.shift();}
+function adopt(result,message,{evidence=modelEvidence,resetSelection=false,action='score change'}={}){
+ checked(result);remember(action);project=result.project;score=result.score;modelEvidence=evidence;
  if(resetSelection){const first=project.occurrences[0];occurrenceId=first.id;threadId=first.threadId;sectionId=first.sectionId;mode='occurrence';noteId=null;}
  changeSerial++;player.stop();proposal=null;selectedChanges.clear();fixSelection();render();status(message);
 }
-function commit(candidate,message){candidate.revision=project.revision+1;adopt({...checked(compileScore(candidate)),project:candidate},message);}
+function commit(candidate,message,action='score change'){candidate.revision=project.revision+1;adopt({...checked(compileScore(candidate)),project:candidate},message,{action});}
+function restoreHistory(direction){
+ const from=direction==='undo'?history:redoHistory,to=direction==='undo'?redoHistory:history,prior=from.at(-1);if(!prior)return;
+ const candidate=clone(prior.project);candidate.revision=project.revision+1;
+ // Validate the target and prepare both snapshots before changing history or the live score.
+ const result=checked(compileScore(candidate)),evidence=clone(prior.modelEvidence),current=historySnapshot(prior.action),hadPreview=Boolean(proposal),focused=document.activeElement;
+ const focusedNoteId=focused?.classList.contains('piano-note')?focused.dataset.noteId:null;
+ to.push(current);from.pop();project=candidate;score=result.score;modelEvidence=evidence;
+ changeSerial++;player.stop();proposal=null;selectedChanges.clear();fixSelection();render();
+ if(focused&&focused!==document.body&&(!focused.isConnected||focused.disabled||!focused.getClientRects().length)){
+  const note=focusedNoteId?[...$('piano-roll').querySelectorAll('.piano-note')].find(node=>node.dataset.noteId===focusedNoteId):null;
+  const control=$(direction).disabled?$(direction==='undo'?'redo':'undo'):$(direction);(note||control).focus({preventScroll:true});
+ }
+ status((direction==='undo'?'Undid ':'Redid ')+prior.action+'. Score restored as revision '+project.revision+'.'+(hadPreview?' Preview discarded; prepare a new preview.':''));
+}
+function renderHistory(){
+ for(const [id,entries,shortcut]of [['undo',history,'Ctrl/Cmd+Z'],['redo',redoHistory,'Ctrl/Cmd+Shift+Z']]){
+  const control=$(id),name=id==='undo'?'Undo':'Redo',label=entries.length?name+' '+entries.at(-1).action:name;
+  control.disabled=!entries.length;control.setAttribute('aria-label',label);control.title=label+' ('+shortcut+')';
+ }
+}
 function clearPreview(){if(proposal)player.stop();draftSerial++;proposal=null;selectedChanges.clear();renderProposal();renderTimeline();}
 function selectOccurrence(id){const o=project.occurrences.find(o=>o.id===id);if(!o)return;occurrenceId=o.id;threadId=o.threadId;sectionId=o.sectionId;mode='occurrence';noteId=null;renderTimeline();renderEditor();}
 function selectRelation(id){
@@ -122,7 +143,7 @@ function renderProposal(){
  $('proposal-summary').textContent=proposal.diff.length+' notes change in '+proposal.affectedOccurrenceIds.length+' passages. The current score stays in place until you accept.';
 }
 function render(){
- fixSelection();$('project-title').value=project.title||'Untitled score';$('tempo').value=project.bpm;$('score-duration').textContent=clock(score.durationTicks/score.ppq*60/score.bpm);$('score-count').textContent=project.motifs.length+' motifs';$('undo').disabled=!history.length;
+ fixSelection();$('project-title').value=project.title||'Untitled score';$('tempo').value=project.bpm;$('score-duration').textContent=clock(score.durationTicks/score.ppq*60/score.bpm);$('score-count').textContent=project.motifs.length+' motifs';renderHistory();
  renderThreads();renderRelations();renderTimeline();renderRelationEditor();renderEditor();renderProposal();
 }
 // APP_PART_ONE
@@ -160,7 +181,7 @@ async function playMotif(id){
 function download(name,data,type){const url=URL.createObjectURL(new Blob([data],{type})),a=el('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 async function saveProject(){
  const serial=changeSerial,document=await encodeProject(project,{modelEvidence});if(serial!==changeSerial)throw Error('The score changed while saving. Save the current score again.');
- download('threadscore-score.json',JSON.stringify(document),'application/json');status('Editable score saved with its motifs, relationships, pins and note ancestry.');
+ download('threadscore-score.json',JSON.stringify(document),'application/json');status('Score file prepared; download requested. Check your browser’s downloads before closing.');
 }
 function exportMidi(){
  const bytes=encodeMidi({ppq:score.ppq,bpm:score.bpm,durationTicks:score.durationTicks,tracks:score.threads.map(t=>({name:t.name,channel:t.channel,program:t.program,notes:score.notes.filter(n=>n.threadId===t.id&&!n.muted)}))});
@@ -174,7 +195,7 @@ async function exportAudio(job){
 }
 async function openProject(file){
  if(!file)return;if(file.size>2*1024*1024)throw Error('A score file must be no larger than 2 MiB.');const serial=changeSerial,loaded=await decodeProject(JSON.parse(await file.text()));if(serial!==changeSerial)throw Error('The score changed while opening this file. Open it again when ready.');
- adopt({ok:true,project:loaded.project,score:loaded.score},'Opened and recompiled the editable score. Imported model receipts remain unverified.',{evidence:loaded.modelEvidence,resetSelection:true});
+ adopt({ok:true,project:loaded.project,score:loaded.score},'Opened and recompiled the editable score. Imported model receipts remain unverified.',{evidence:loaded.modelEvidence,resetSelection:true,action:'opening a score'});
 }
 async function openMidi(file,targetThreadId){
  if(!file)return;if(file.size>4*1024*1024)throw Error('MIDI imports must be no larger than 4 MiB.');
@@ -194,7 +215,7 @@ function confirmImport(){
  try{
   if(!importSource||importSource.baseSerial!==changeSerial)throw Error('The score changed. Close this dialog and select the MIDI file again.');
   const target=$('import-thread').value,result=importMidiMotif(project,importSource.parsed,{threadId:target,trackId:$('import-track').value,fromBeat:Number($('import-start').value),toBeat:Number($('import-end').value),fileName:importSource.fileName,sha256:importSource.sha256});
-  threadId=target;mode='motif';noteId=null;adopt(result,'Imported the selected notes into the persistent motif. Relationships were recompiled at this score’s tempo.');$('import-dialog').close();importSource=null;
+  threadId=target;mode='motif';noteId=null;adopt(result,'Imported the selected notes into the persistent motif. Relationships were recompiled at this score’s tempo.',{action:'MIDI import'});$('import-dialog').close();importSource=null;
  }catch(error){$('import-error').textContent=error.message;}
 }
 // APP_PART_TWO
@@ -212,8 +233,8 @@ $('preview-relationship').addEventListener('click',guard(()=>{
  const source=project.occurrences.find(o=>o.id===$('relation-source').value),scope=[...$('relation-scope').querySelectorAll('input:checked')].map(input=>input.dataset.occurrenceId);
  showProposal(proposeRelationshipEdit(project,r.id,{kind,params,sourceOccurrenceId:source.id,sourceThreadId:source.threadId,scopeOccurrenceIds:scope}));
 }));
-$('accept-relationship').addEventListener('click',guard(()=>{if(!proposal)throw Error('Prepare a preview first.');adopt(acceptProposal(project,proposal),'Relationship accepted. Its addressed passages and downstream dependencies now use the new program.',{evidence:proposal.modelEvidence??modelEvidence});}));
-$('accept-selected').addEventListener('click',guard(()=>{if(!proposal)throw Error('Prepare a preview first.');const count=selectedChanges.size;adopt(acceptNoteChanges(project,proposal,[...selectedChanges]),count+' individual note edit'+(count===1?'':'s')+' accepted. The relationship program is unchanged.',{evidence:proposal.modelEvidence??modelEvidence});}));
+$('accept-relationship').addEventListener('click',guard(()=>{if(!proposal)throw Error('Prepare a preview first.');adopt(acceptProposal(project,proposal),'Relationship accepted. Its addressed passages and downstream dependencies now use the new program.',{evidence:proposal.modelEvidence??modelEvidence,action:'relationship acceptance'});}));
+$('accept-selected').addEventListener('click',guard(()=>{if(!proposal)throw Error('Prepare a preview first.');const count=selectedChanges.size;adopt(acceptNoteChanges(project,proposal,[...selectedChanges]),count+' individual note edit'+(count===1?'':'s')+' accepted. The relationship program is unchanged.',{evidence:proposal.modelEvidence??modelEvidence,action:'selected note acceptance'});}));
 $('discard-proposal').addEventListener('click',()=>{player.stop();clearPreview();renderRelationEditor();status('Preview discarded. The score is unchanged.');});
 $('play-before').addEventListener('click',guard(()=>player.play(score,rangeOptions($('play-range').value==='whole'))));
 $('play-after').addEventListener('click',guard(()=>{if(!proposal)throw Error('Prepare a preview first.');return player.play(proposal.score,rangeOptions($('play-range').value==='whole'));}));
@@ -231,28 +252,34 @@ $('apply-note').addEventListener('click',guard(()=>{
  for(const id of ['note-pitch','note-start','note-duration','note-velocity'])if(!$(id).value||!$(id).checkValidity())throw Error('Enter valid note values before applying.');
  const localStart=Number($('note-start').value)*480,duration=Number($('note-duration').value)*480;if(!Number.isSafeInteger(localStart)||!Number.isSafeInteger(duration))throw Error('Note timing must use exact score ticks.');
  const patch={pitch:Number($('note-pitch').value),startTick:localStart,durationTicks:duration,velocity:Number($('note-velocity').value)};
- if(mode==='motif'){const candidate=clone(project),motif=candidate.motifs.find(m=>m.id===currentMotif().id),note=motif.notes.find(n=>n.id===noteId);if(!note)throw Error('Select a source note.');Object.assign(note,patch);commit(candidate,'Source motif edited. Occurrences and relationships were recompiled; pinned performed notes remain fixed.');}
- else{patch.startTick+=occurrence.startTick;adopt(setNoteOverride(project,noteId,patch),'Occurrence note edited. Its source motif stays available for the other passages.');}
+ if(mode==='motif'){const candidate=clone(project),motif=candidate.motifs.find(m=>m.id===currentMotif().id),note=motif.notes.find(n=>n.id===noteId);if(!note)throw Error('Select a source note.');Object.assign(note,patch);commit(candidate,'Source motif edited. Occurrences and relationships were recompiled; pinned performed notes remain fixed.','source note edit');}
+ else{patch.startTick+=occurrence.startTick;adopt(setNoteOverride(project,noteId,patch),'Occurrence note edited. Its source motif stays available for the other passages.',{action:'occurrence note edit'});}
 }));
-$('pin-note').addEventListener('click',guard(()=>{requireOccurrenceNote();const locked=Boolean(project.locks?.[noteId]);adopt(setNoteLocks(project,[noteId],!locked),locked?'Note unpinned. It follows the relationship again.':'Note pinned at its current performed values.');}));
-$('clear-note').addEventListener('click',guard(()=>{requireOccurrenceNote();adopt(clearNoteOverrides(project,[noteId]),'Individual note edit released. The underlying relationship was recompiled.');}));
+$('pin-note').addEventListener('click',guard(()=>{requireOccurrenceNote();const locked=Boolean(project.locks?.[noteId]);adopt(setNoteLocks(project,[noteId],!locked),locked?'Note unpinned. It follows the relationship again.':'Note pinned at its current performed values.',{action:locked?'note unpinning':'note pinning'});}));
+$('clear-note').addEventListener('click',guard(()=>{requireOccurrenceNote();adopt(clearNoteOverrides(project,[noteId]),'Individual note edit released. The underlying relationship was recompiled.',{action:'note edit release'});}));
 $('add-note').addEventListener('click',guard(()=>{
  if(mode!=='motif')throw Error('Choose a source motif before adding a note.');
  const candidate=clone(project),motif=candidate.motifs.find(m=>m.id===currentMotif().id),used=new Set(motif.notes.map(n=>n.pitch));let pitch=60;while(used.has(pitch)&&pitch<127)pitch++;if(used.has(pitch))throw Error('Choose a free pitch by editing the motif first.');
  let startTick=0,durationTicks=0;for(const n of [...motif.notes].sort((a,b)=>a.startTick-b.startTick)){if(n.startTick>startTick){durationTicks=Math.min(240,n.startTick-startTick);break;}startTick=Math.max(startTick,n.startTick+n.durationTicks);}
  if(!durationTicks&&startTick<motif.lengthTicks)durationTicks=Math.min(240,motif.lengthTicks-startTick);
  if(!durationTicks)throw Error('This motif has no empty rhythmic gap. Shorten a note before adding one.');
- const addedId='note-'+crypto.randomUUID();motif.notes.push({id:addedId,startTick,durationTicks,pitch,velocity:80});commit(candidate,'Source note added in an empty rhythmic gap. Adjust its pitch, timing or velocity below.');noteId=addedId;renderEditor();
+ const addedId='note-'+crypto.randomUUID();motif.notes.push({id:addedId,startTick,durationTicks,pitch,velocity:80});commit(candidate,'Source note added in an empty rhythmic gap. Adjust its pitch, timing or velocity below.','source note addition');noteId=addedId;renderEditor();
 }));
 $('delete-note').addEventListener('click',guard(()=>{
- if(mode!=='motif'||!noteId)throw Error('Select a source note.');const candidate=clone(project),motif=candidate.motifs.find(m=>m.id===currentMotif().id);motif.notes=motif.notes.filter(n=>n.id!==noteId);commit(candidate,'Source note deleted and affected passages recompiled.');noteId=null;renderEditor();
+ if(mode!=='motif'||!noteId)throw Error('Select a source note.');const candidate=clone(project),motif=candidate.motifs.find(m=>m.id===currentMotif().id);motif.notes=motif.notes.filter(n=>n.id!==noteId);commit(candidate,'Source note deleted and affected passages recompiled.','source note deletion');noteId=null;renderEditor();
 }));
-$('project-title').addEventListener('change',guard(()=>{const title=$('project-title').value.trim();if(!title)throw Error('Give this composition a title.');const candidate=clone(project);candidate.title=title;commit(candidate,'Composition renamed.');}));
-$('tempo').addEventListener('change',guard(()=>{if(!$('tempo').value||!$('tempo').checkValidity())throw Error('Enter a tempo from 30 to 240 BPM.');const candidate=clone(project);candidate.bpm=Number($('tempo').value);commit(candidate,'Tempo updated. MIDI and audio exports will use this tempo.');}));
-$('undo').addEventListener('click',guard(()=>{
- const prior=history.pop();if(!prior)return;prior.project.revision=project.revision+1;const result=checked(compileScore(prior.project));project=prior.project;score=result.score;modelEvidence=prior.modelEvidence;changeSerial++;player.stop();proposal=null;selectedChanges.clear();render();status('Previous score restored as a new revision.');
+$('project-title').addEventListener('change',guard(()=>{const title=$('project-title').value.trim();if(!title)throw Error('Give this composition a title.');const candidate=clone(project);candidate.title=title;commit(candidate,'Composition renamed.','composition rename');}));
+$('tempo').addEventListener('change',guard(()=>{if(!$('tempo').value||!$('tempo').checkValidity())throw Error('Enter a tempo from 30 to 240 BPM.');const candidate=clone(project);candidate.bpm=Number($('tempo').value);commit(candidate,'Tempo updated. MIDI and audio exports will use this tempo.','tempo change');}));
+$('undo').addEventListener('click',guard(()=>restoreHistory('undo')));
+$('redo').addEventListener('click',guard(()=>restoreHistory('redo')));
+document.addEventListener('keydown',guard(event=>{
+ if(event.defaultPrevented||event.isComposing||event.altKey||(!event.ctrlKey&&!event.metaKey)||(event.ctrlKey&&event.metaKey))return;
+ const target=event.target;if(target instanceof Element&&(target.closest('input,textarea,select,[contenteditable],[role="textbox"]')||target.isContentEditable)||document.querySelector('dialog[open]'))return;
+ const key=event.key.toLowerCase(),direction=key==='z'?(event.shiftKey?'redo':'undo'):key==='y'&&event.ctrlKey&&!event.metaKey&&!event.shiftKey?'redo':null;
+ if(!direction||!(direction==='undo'?history:redoHistory).length)return;
+ event.preventDefault();restoreHistory(direction);
 }));
-$('demo-reset').addEventListener('click',guard(()=>{const candidate=createDemoProject();candidate.revision=project.revision+1;threadId='glass';sectionId='exchange';occurrenceId='exchange-glass-1';relationId='answer-exchange';mode='occurrence';noteId='exchange-glass-1::b1';adopt({...checked(compileScore(candidate)),project:candidate},'Original three-minute composition restored. Undo can recover your previous score.',{evidence:null});}));
+$('demo-reset').addEventListener('click',guard(()=>{const candidate=createDemoProject();candidate.revision=project.revision+1;threadId='glass';sectionId='exchange';occurrenceId='exchange-glass-1';relationId='answer-exchange';mode='occurrence';noteId='exchange-glass-1::b1';adopt({...checked(compileScore(candidate)),project:candidate},'Original three-minute composition restored. Undo can recover your previous score.',{evidence:null,action:'demo reset'});}));
 $('project-save').addEventListener('click',guard(saveProject));$('project-open').addEventListener('click',()=>{$('project-file').value='';$('project-file').click();});
 $('project-file').addEventListener('change',guard(event=>openProject(event.target.files[0])));
 $('midi-file').addEventListener('change',guard(event=>{const targetThreadId=pendingImportThreadId??threadId;pendingImportThreadId=null;return openMidi(event.target.files[0],targetThreadId);}));
