@@ -24,7 +24,7 @@ The included original composition, **Three threads, six rooms**, is three minute
 
 1. Use **Hear motif** to audition each source, then select a section and play it. Choose the whole-piece range to hear the full arrangement.
 2. Select **Answer**, change the pitch interval from 3 to 4 semitones, and choose **Preview the change**. The original demo produces 26 changed notes across the answer and its downstream shadow.
-3. Use **Before** and **Proposed** to compare actual audio. Inspect changed notes and ancestry. Accept the relationship to change the graph, or select individual notes to accept explicit occurrence edits. A partial acceptance is rejected if it would also change unselected dependent notes.
+3. Use **Before** and **Proposed** to compare actual audio. Inspect changed notes and ancestry. Every change is available in pages of 100, with exact before-and-after pitch, start tick, duration, velocity, and rest changes. Find notes by ID or filter by passage; the selected count includes notes on other pages and behind filters. **Select this page** and **Clear this page** affect only the displayed rows; **Clear selection** clears all selected notes. Accept the relationship to change the graph, or accept selected notes as explicit occurrence edits. A partial acceptance is rejected if it would also change unselected dependent notes, preserving the preview and your selection so you can revise it.
 4. Click an occurrence in the arrangement and select a piano-roll note. Edit its pitch, timing, or velocity, or pin its performed values. Switch to **Edit source motif** when the change should affect every occurrence sharing that source.
 5. Save the editable score, then export MIDI or the audio you need. Reopen the saved score to continue editing.
 
@@ -33,6 +33,8 @@ Changing a relationship control invalidates its old preview and stops that previ
 Sections can be empty, and a thread can have a source motif without a placed occurrence. Selecting that context shows an empty occurrence editor; the source motif remains editable. Use the arrangement or occurrence selector to return to a placed passage. Opening a saved score starts from its first placed occurrence.
 
 ## Relationship score
+
+The complete proposal inspector on a 512-change score: [desktop review](docs/screenshots/proposal-desktop.png) and [narrow review](docs/screenshots/proposal-mobile.png). These are actual browser captures, with change 402 selected on page five.
 
 Each relation addresses named target occurrences in the same section as its source. The compiler evaluates occurrence dependencies, rejects cycles and invalid pitches or timing, and preserves note identities.
 
@@ -89,6 +91,7 @@ Audio rendering is limited to ten minutes per operation, with preflight limits o
 ```sh
 npm test
 THREADSCORE_CHROME=/path/to/google-chrome npm run test:browser
+THREADSCORE_CHROME=/path/to/google-chrome npm run test:proposal-review
 npm run package
 ```
 

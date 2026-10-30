@@ -9,6 +9,7 @@ const FILES=new Map([
  ['/', ['public/index.html','text/html; charset=utf-8']],['/index.html',['public/index.html','text/html; charset=utf-8']],
  ['/app.mjs',['public/app.mjs','text/javascript; charset=utf-8']],['/style.css',['public/style.css','text/css; charset=utf-8']],
  ['/audio-worker.mjs',['public/audio-worker.mjs','text/javascript; charset=utf-8']],['/playback.mjs',['public/playback.mjs','text/javascript; charset=utf-8']],
+ ['/proposal-changes.mjs',['public/proposal-changes.mjs','text/javascript; charset=utf-8']],
  ...['score','demo','midi','project','synth','zip','import'].map(name=>['/src/'+name+'.mjs',['src/'+name+'.mjs','text/javascript; charset=utf-8']])
 ]);
 const CSP="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
