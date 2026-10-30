@@ -160,7 +160,7 @@ async function playMotif(id){
 function download(name,data,type){const url=URL.createObjectURL(new Blob([data],{type})),a=el('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 async function saveProject(){
  const serial=changeSerial,document=await encodeProject(project,{modelEvidence});if(serial!==changeSerial)throw Error('The score changed while saving. Save the current score again.');
- download('threadscore-score.json',JSON.stringify(document,null,2),'application/json');status('Editable score saved with its motifs, relationships, pins and note ancestry.');
+ download('threadscore-score.json',JSON.stringify(document),'application/json');status('Editable score saved with its motifs, relationships, pins and note ancestry.');
 }
 function exportMidi(){
  const bytes=encodeMidi({ppq:score.ppq,bpm:score.bpm,durationTicks:score.durationTicks,tracks:score.threads.map(t=>({name:t.name,channel:t.channel,program:t.program,notes:score.notes.filter(n=>n.threadId===t.id&&!n.muted)}))});
