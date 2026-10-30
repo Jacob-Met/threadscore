@@ -1,5 +1,5 @@
 import {proposeProgram,RELATION_DEFINITIONS} from './score.mjs';
-const ENDPOINT='https://api.tokenfactory.nebius.com/v1/chat/completions',DEFAULT_MODEL='nvidia/Nemotron-3_5-Lightning',encoder=new TextEncoder();
+const ENDPOINT='https://api.tokenfactory.nebius.com/v1/chat/completions',DEFAULT_MODEL='nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B',encoder=new TextEncoder();
 const error=(code,message)=>Object.assign(Error(message),{code}),forbidden=new Set(['__proto__','prototype','constructor']);
 function guardJson(value,depth=0,state={nodes:0}){
  if(++state.nodes>12000||depth>12)throw error('INVALID_PROGRAM','Program structure exceeds supported limits.');
@@ -40,16 +40,16 @@ async function boundedResponse(response,signal){
  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(joined));}catch{throw error('PROVIDER_PROTOCOL','Provider returned an invalid JSON envelope.');}
 }
 function usageReceipt(value){const result={};for(const key of ['prompt_tokens','completion_tokens','total_tokens'])if(Number.isSafeInteger(value?.[key])&&value[key]>=0&&value[key]<=1000000000)result[key]=value[key];return result;}
-export function createConfiguredProvider({env=process.env,fetchImpl=globalThis.fetch,attemptTimeoutMs=10000}={}){
+export function createConfiguredProvider({env=process.env,fetchImpl=globalThis.fetch,attemptTimeoutMs=28000}={}){
  const model=typeof env.THREADSCORE_MODEL==='string'&&env.THREADSCORE_MODEL.trim()?env.THREADSCORE_MODEL.trim():DEFAULT_MODEL;
  if(model.length>512||!/^nvidia\/[A-Za-z0-9_.\/-]+$/.test(model))throw TypeError('Configure a bounded NVIDIA model identifier.');
  if(env.THREADSCORE_ENABLE_MODEL!=='1'||typeof env.NEBIUS_API_KEY!=='string'||!env.NEBIUS_API_KEY.trim())return {available:false,model,reason:'Explicit enablement and the maintained credential are required.'};
- if(typeof fetchImpl!=='function')throw TypeError('fetch is unavailable.');if(!Number.isInteger(attemptTimeoutMs)||attemptTimeoutMs<10||attemptTimeoutMs>20000)throw TypeError('Invalid attempt timeout.');
+ if(typeof fetchImpl!=='function')throw TypeError('fetch is unavailable.');if(!Number.isInteger(attemptTimeoutMs)||attemptTimeoutMs<10||attemptTimeoutMs>60000)throw TypeError('Invalid attempt timeout.');
  const apiKey=env.NEBIUS_API_KEY;
  async function callOnce(messages,signal){
   const aborter=new AbortController(),onAbort=()=>aborter.abort();if(signal?.aborted)aborter.abort();signal?.addEventListener('abort',onAbort,{once:true});const started=performance.now(),timer=setTimeout(()=>aborter.abort(),attemptTimeoutMs);
   try{
-   const body=JSON.stringify({model,messages,temperature:.2,max_tokens:2048,response_format:{type:'json_object'},stream:false});if(encoder.encode(body).length>160*1024)throw error('CONTEXT_LIMIT','Provider request exceeds its context limit.');if(aborter.signal.aborted)throw error('UNKNOWN_OUTCOME','Request was interrupted before transport.');
+   const body=JSON.stringify({model,messages,temperature:.2,max_tokens:8192,response_format:{type:'json_object'},stream:false});if(encoder.encode(body).length>160*1024)throw error('CONTEXT_LIMIT','Provider request exceeds its context limit.');if(aborter.signal.aborted)throw error('UNKNOWN_OUTCOME','Request was interrupted before transport.');
    let response;try{response=await fetchImpl(ENDPOINT,{method:'POST',redirect:'error',credentials:'omit',headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json'},body,signal:aborter.signal});}catch{throw error('UNKNOWN_OUTCOME','Provider transport outcome is unknown.');}
    if(!response.ok){await response.body?.cancel().catch(()=>{});throw error('PROVIDER_HTTP','Provider returned an unsuccessful HTTP response.');}
    const data=await boundedResponse(response,aborter.signal),message=data?.choices?.[0]?.message;

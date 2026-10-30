@@ -2,7 +2,7 @@
 
 Compose the connections between persistent musical motifs. THREADSCORE is a local composition instrument with named source motifs, editable occurrences, an explicit relationship score, note ancestry, auditionable proposals, and MIDI, WAV, stem, and editable-project export.
 
-This private implementation follows selected concept 6 in [HAMON’s project selection](https://github.com/Jacob-Met/hamon/issues/1631#issuecomment-6431104215) and the [retained team’s source claim](https://github.com/Jacob-Met/hamon/issues/1631#issuecomment-6431227633). The current instrument mechanics have passed actual browser receiving. **Live NVIDIA-model generation on Nebius, subjective musical quality, and improvement over independent clip editing remain unqualified.** The optional model path is disabled by default.
+This implementation follows selected concept 6 in [HAMON’s project selection](https://github.com/Jacob-Met/hamon/issues/1631#issuecomment-6431104215) and the [retained team’s source claim](https://github.com/Jacob-Met/hamon/issues/1631#issuecomment-6431227633). The current instrument mechanics have passed actual browser receiving. Nemotron drafting through Nebius Token Factory works live (see below); subjective musical quality and improvement over independent clip editing remain unqualified.
 
 ![THREADSCORE desktop arrangement and relationship controls](docs/screenshots/desktop.png)
 
@@ -11,12 +11,13 @@ This private implementation follows selected concept 6 in [HAMON’s project sel
 Use Node.js 22 or later and a modern browser with Web Audio and module-worker support. There are no runtime package dependencies and no installation step.
 
 ```sh
-npm start
+export NEBIUS_API_KEY=your-token-factory-key   # optional; enables Nemotron drafting
+PORT=4411 npm start
 ```
 
 If Node is installed without npm, run `node server.mjs` instead.
 
-Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The server binds to loopback. Opening the application makes no model call and sends no imported music to a service. Save your work with **Save score**; there is no automatic persistence between page loads.
+Open [http://127.0.0.1:4411](http://127.0.0.1:4411) (default port 4173 if `PORT` is unset). The server binds to loopback. Opening the application makes no model call (a call happens only when you press Draft) and sends no imported music to a service. Save your work with **Save score**; there is no automatic persistence between page loads.
 
 The included original composition, **Three threads, six rooms**, is three minutes at 96 BPM. Ember, Glass, and Ground each retain a source motif across six sections. Its six relationships compile 576 notes, of which 573 are audible; interruptions retain the identities of muted notes. One Glass note is pinned to demonstrate preservation through a relationship change.
 
@@ -76,13 +77,16 @@ Import is deliberately **note-only**. File name, content hash, track, source tim
 
 The built-in audio renderer uses original additive preview voices. Program numbers act as timbre hints; this is not a sampled General MIDI instrument library. Use exported MIDI with your own instruments when timbre matters. Technical audio checks establish valid rendering and alignment, not artistic quality or a listening assessment.
 
-## Optional model synthesis
+## How it uses NVIDIA Nemotron on Nebius Token Factory
 
-The server-side adapter is intended to use an NVIDIA model on Nebius to propose a typed composition program. It only activates when `THREADSCORE_ENABLE_MODEL=1` and an existing maintained `NEBIUS_API_KEY` are present in the server environment. `THREADSCORE_MODEL` can select an approved NVIDIA identifier. The default candidate is `nvidia/Nemotron-3_5-Lightning`; account availability and live behavior have not been qualified.
+Type a musical intention such as "Let the Glass thread answer Ember a major third higher and softer. Keep the pinned note." and choose **Draft with Nemotron**. The server sends your sentence and the symbolic score (motifs, occurrences, relations; never audio) to Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1/chat/completions`) and asks the model for a typed relationship program in JSON.
 
-The browser does not accept credentials, endpoint changes, or model overrides. A model request sends bounded symbolic project context and the user’s explicit instruction, never audio. A proposal must compile before preview and must be explicitly accepted. One compiler-guided repair is allowed after a confirmed invalid program. Unknown transport outcomes are not retried. Confirmed attempts retain separate receipts; unresolved attempts are not assigned invented usage or cost.
+- **Model:** `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` by default. The task is structured editing of a small symbolic score, so the 30B-A3B model is enough and keeps a draft near 20 seconds. Set `THREADSCORE_MODEL` to another `nvidia/...` identifier (for example `nvidia/nemotron-3-super-120b-a12b`) to compare.
+- **Checking:** the model only proposes. The app's own compiler validates every operation, rejects cycles, invalid pitches and timing, and respects pinned notes. One compiler-guided repair is allowed after a confirmed invalid program. A valid program becomes a proposal with an exact per-note diff that you can audition (before and after) and accept or reject.
+- **Receipts:** each response keeps the model name the provider reports, request id, latency, and token usage from that call.
+- **Key handling:** `NEBIUS_API_KEY` is read only by the server. The browser cannot supply credentials, endpoints, or models. Without a key the button is disabled and manual composing, playback, and export still work.
 
-Tests inject a fake provider and do not establish live model performance. See [verification and remaining qualification](docs/verification.md) before relying on this path.
+Live check from a shell (prints model, request id, latency, usage; no key): `NEBIUS_API_KEY=... node tools/live-check.mjs`. One recorded run returned `accepted` on the first attempt with 6,804 total tokens in about 19 seconds. Tests use an injected fake provider and need no network.
 
 ## Practical bounds
 

@@ -6,3 +6,4 @@ artifacts/
 *.log
 .DS_Store
 dist/
+demo/*.mp4

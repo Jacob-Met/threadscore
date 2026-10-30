@@ -4,7 +4,7 @@ import {dirname,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {decodeProject} from './src/project.mjs';
 import {proposeProgram} from './src/score.mjs';
-const ROOT=dirname(fileURLToPath(import.meta.url)),DEFAULT_MODEL='nvidia/Nemotron-3_5-Lightning';
+const ROOT=dirname(fileURLToPath(import.meta.url)),DEFAULT_MODEL='nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B';
 const FILES=new Map([
  ['/', ['public/index.html','text/html; charset=utf-8']],['/index.html',['public/index.html','text/html; charset=utf-8']],
  ['/app.mjs',['public/app.mjs','text/javascript; charset=utf-8']],['/style.css',['public/style.css','text/css; charset=utf-8']],
@@ -85,7 +85,7 @@ export function createAppServer({provider=null,rootDir=ROOT,timeoutMs=20000,maxB
  server.requestTimeout=30000;server.headersTimeout=10000;return server;
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
- let provider=null;if(process.env.THREADSCORE_ENABLE_MODEL==='1'){const {createConfiguredProvider}=await import('./src/provider.mjs');provider=createConfiguredProvider();}
+ let provider=null;if(process.env.NEBIUS_API_KEY&&process.env.THREADSCORE_ENABLE_MODEL!=='0'){const {createConfiguredProvider}=await import('./src/provider.mjs');provider=createConfiguredProvider({env:{...process.env,THREADSCORE_ENABLE_MODEL:'1'}});}
  const port=Number(process.env.PORT??4173);if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid PORT.');
- createAppServer({provider}).listen(port,'127.0.0.1',()=>process.stdout.write('THREADSCORE available at http://127.0.0.1:'+port+'\n'));
+ createAppServer({provider,timeoutMs:60000}).listen(port,'127.0.0.1',()=>process.stdout.write('THREADSCORE available at http://127.0.0.1:'+port+'\n'));
 }
